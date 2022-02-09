@@ -1,0 +1,374 @@
+---
+title: "What do philosophers talk about over time? (Peixuan Song ps3193)"
+output:
+  html_document:
+    df_print: paged
+---
+
+To solve this question we use the dataset "History of Philosophy". 
+
+
+```{r warning=FALSE,message=FALSE,echo=FALSE}
+# load packages
+library(tm)
+library(wordcloud)
+library("wordcloud2")
+library(topicmodels)
+library(reshape2)
+library(ggplot2)
+library(pals)
+library(SnowballC)
+library(lda)
+library(dplyr)
+library(plotly)
+library(DT)
+```
+
+## Data Preparation
+
+### Data description
+First, take a look at the text data. We can easily tell the text is seperated by different books by different authers in different schools. 
+```{r echo=FALSE}
+df=read.csv("../data/philosophy_data.csv")
+colnames(df)
+```
+
+There are 13 schools in total, and we try to sort the text by schools and original published date to see the distribution of the text.
+```{r}
+names(table(df[,"school"]))
+datatable(as.matrix(table(df[,"school"])))
+datatable(as.matrix(table(df[,"original_publication_date"])))
+df$published_date<-floor(df$original_publication_date)
+
+df%>%
+  group_by(school,original_publication_date)%>%
+  summarise(count = n())
+```
+
+
+### Data observation
+
+
+```{r}
+a <- ggplot(data = df[df$published_date<0,], aes(x = published_date, fill = school)) +geom_bar(position = "dodge")+scale_fill_manual(values = c('#B3CDE3','#FBB4AE'))
+
+b <- ggplot(data = df[df$published_date>0&df$published_date<1600,], aes(x = published_date, fill = school)) +geom_bar(position = "dodge")+scale_fill_manual(values = c('#DECBE4'))
+
+p1<-ggplotly(a)
+p2<-ggplotly(b)
+subplot(p1, p2)
+c <- ggplot(data = df[df$published_date>1600&df$published_date<1986,], aes(x = published_date, fill = school)) +geom_bar(position = "dodge")
+ggplotly(c)
+
+
+```
+
+As we can see from the time series charts, different schools come in different time period. Before Century, *Plato* firstly exists and then comes *Aristotle*. In A.C.100-200, *Stoicism* take over the philosophy field. There was no other school after that before 1600. The *Rationalism* appeared in 1637 and existed until 1710. Meanwhile, *Empiricism* appeared in 1674 and disappeared before 1780. In late 17th century, *Capitalism* and *Feminism* start to  appear, and *German_idealism* played a very important part around 1800. *Communism* and *Nietzsche* are the most two common schools in 18 century and both stopped spreading before 19 century. In the following century, *Analytic* and *Phenomenology* have published works constantly. followed by lots of *Continental* and few Feminism near millennium.
+
+
+By analyzing different schools over time, we can roughly get the idea of what philosophers are focused on over time.
+
+
+
+## Data Analysis
+
+### Datatable and DTM matrix
+##### (Using R to process data and observe)
+
+We first merge the text data by school into corpus, remove some stopwords and punctuation using tm package. And bulid a TermDocumentMatrix (inverse of DTM that contains counts of each words in every documents) to see the frequency of the words. 
+
+```{r echo=FALSE}
+# text_stoicism<-NULL
+# for (j in 1:nrow(df[df$school=="stoicism",])){
+#   text_stoicism<-paste(text_stoicism,df[df$school=="stoicism",]$sentence_lowered[j])
+# }
+# 
+# doc_stoicism<-Corpus(VectorSource(text_stoicism[1]))
+# inspect(doc_stoicism)
+# doc_stoicism<-tm_map(doc_stoicism,removePunctuation)
+# doc_stoicism<-tm_map(doc_stoicism,removeWords,stopwords(kind = "en"))
+# TDM_stoicism <- TermDocumentMatrix(doc_stoicism)
+# mat_stoicism <- as.matrix(TDM_stoicism)
+# f_stoicism <- sort(rowSums(mat_stoicism),decreasing=TRUE)
+# dat_stoicism <- data.frame(word = names(f_stoicism),freq=f_stoicism)
+
+dat_plato<-read.csv("dat_plato.csv")
+dat_aristotle<-read.csv("dat_aristotle.csv")
+dat_stoicism<-read.csv("dat_stoicism.csv")
+dat_rationalism<-read.csv("dat_rationalism.csv")
+dat_empiricism<-read.csv("dat_empiricism.csv")
+dat_capitalism<-read.csv("dat_capitalism.csv")
+dat_feminism<-read.csv("dat_feminism.csv")
+dat_german_idealism<-read.csv("dat_german_idealism.csv")
+dat_communism<-read.csv("dat_communism.csv")
+dat_nietzsche<-read.csv("dat_nietzsche.csv")
+dat_analytic<-read.csv("dat_analytic.csv")
+dat_phenomenology<-read.csv("dat_phenomenology.csv")
+dat_continental<-read.csv("dat_continental.csv")
+```
+
+By using the datatable in R we can search the counts of certain words in a specified doc. for example, the word "thee" appears 306 times in the stoicism school's text.
+
+```{r echo=FALSE,warning=FALSE}
+datatable(dat_stoicism[,2:3])
+```
+
+
+### Wordcloud
+
+As we can see there are several useful words in each school's wordcloud. We can conclude and extract some keywords in each school sorted by time.  
+
+
+#### Plato (BC 350)
+
+Plato school concerns about *think*, *say*, *things*, *socrates*, *good*, *man*, *soul*.
+
+```{r warning=FALSE}
+set.seed(123)
+wordcloud(words = dat_plato$word, freq = dat_plato$freq, scale = c(4, 0.2),min.freq = 10, max.words=100, random.order=FALSE, rot.per=0.30, colors=brewer.pal(8, "Dark2"))
+
+```
+
+
+However, there are still some difficulty we need to combersome just using R. for example, there seems to be lots of meaningless words(i.e. one, thing, etc.) in the wordcloud. To overcome this, I use python packages to further clean the data by the process stated in the following section.
+As we can see from the following graph, the key words becomes more clear.
+
+Key words of Plato:*think*, *things*, *Socrates*, *good*, *people*, *soul*, *knowledge*.
+
+
+![Most words plato talk about.](/Users/patriciasong/Documents/python/5243/R/wordcloud_plato.png)
+
+
+#### Aristotle (BC 320)
+
+Aristotle school concerns about *man*, *time*, *animals*, *body*, *parts*.
+
+```{r warning=FALSE}
+wordcloud(words = dat_aristotle$word, freq = dat_aristotle$freq, scale = c(4, 0.2),min.freq = 10, max.words=100, random.order=FALSE, rot.per=0.30, colors=brewer.pal(8, "Dark2"))
+
+```
+
+
+Key words of Aristotle:*case*, *like*, *reason*, *animal*, *nature*, *fact*, *body*.
+![Most words aristotle talk about.](/Users/patriciasong/Documents/python/5243/R/wordcloud_aristotle.png)
+
+
+#### Stoicism (AC 125 - AC 170)
+
+Stoicism school contains more ancient English words such as *thou*, *thee*, *thy*, *doth*.
+
+```{r warning=FALSE}
+
+wordcloud(words = dat_stoicism$word, freq = dat_stoicism$freq, scale = c(4, 0.2),min.freq = 10, max.words=100, random.order=FALSE, rot.per=0.30, colors=brewer.pal(8, "Dark2"))
+```
+
+Key words of Stoicism:*thou*, *nature*, *thee*, *world*, *mind*, *reason*, *good*,*life*.
+![Most words stoicism talk about.](/Users/patriciasong/Documents/python/5243/R/wordcloud_stoicism.png)
+
+
+
+
+#### Rationalism (1637 - 1710)
+
+Rationalism school contains most *god*, *body*, *nature*, *mind*,*reason*.
+
+```{r warning=FALSE}
+
+wordcloud(words = dat_rationalism$word, freq = dat_rationalism$freq, scale = c(4, 0.2),min.freq = 10, max.words=150, random.order=FALSE, rot.per=0.30, colors=brewer.pal(8, "Dark2"))
+```
+
+
+Key words of Rationalism:*reason*, *mind*, *bodi*, *know*, *soul*, *cause*, *think*,*nature*,*certain*.
+![Most words rationalism talk about.](/Users/patriciasong/Documents/python/5243/R/wordcloud_rationalism.png)
+
+#### Empiricism (1689 - 1779)
+
+Empiricism school contains most *idea*, *mind*, *may*, *knowledge*.
+
+```{r warning=FALSE}
+
+wordcloud(words = dat_empiricism$word, freq = dat_empiricism$freq, scale = c(4, 0.2),min.freq = 10, max.words=150, random.order=FALSE, rot.per=0.30, colors=brewer.pal(8, "Dark2"))
+```
+
+Key words of Empiricism:*idea*, *object*, *reason*, *think*, *nature*, *mind*, *power*,*passion*.
+![Most words empiricism talk about.](/Users/patriciasong/Documents/python/5243/R/wordcloud_empiricism.png)
+
+#### Capitalism (1776 - 1936)
+
+Capitalism school contains most *price*, *money*, *labour*, *value*,*capital*,*country*,*trade*.
+```{r warning=FALSE}
+
+wordcloud(words = dat_capitalism$word, freq = dat_capitalism$freq, scale = c(4, 0.2),min.freq = 10, max.words=140, random.order=FALSE, rot.per=0.30, colors=brewer.pal(8, "Dark2"))
+```
+
+Key words of Capitalism:*country*, *employ*, *great*, *time*, *trade*, *profit*, *product*.
+![Most words capitalism talk about.](/Users/patriciasong/Documents/python/5243/R/wordcloud_capitalism.png)
+
+#### Feminism (1792 - 1981)
+
+Feminism school contains most *woman*, *man*, *love*, *black*,*can*,*life*,*mother*.
+```{r warning=FALSE}
+
+wordcloud(words = dat_feminism$word, freq = dat_feminism$freq, scale = c(4, 0.2),min.freq = 10, max.words=165, random.order=FALSE, rot.per=0.30, colors=brewer.pal(8, "Dark2"))
+```
+
+Key words of Feminism:*woman*, *love*, *mother*, *husband*, *nature*, *like*, *life*.
+![Most words feminism talk about.](/Users/patriciasong/Documents/python/5243/R/wordcloud_feminism.png)
+
+
+
+#### German_idealism (1781 - 1821)
+
+German_idealism school contains most *concept*, *nature*, *self*, *existence*,*consciousness*.
+
+```{r warning=FALSE}
+
+wordcloud(words = dat_german_idealism$word, freq = dat_german_idealism$freq, scale = c(4, 0.2),min.freq = 10, max.words=100, random.order=FALSE, rot.per=0.30, colors=brewer.pal(8, "Dark2"))
+```
+
+Key words of German_idealism:*determine*, *concept*, *object*, *exist*, *nature*, *conscious*, *think*.
+![Most words german_idealism talk about.](/Users/patriciasong/Documents/python/5243/R/wordcloud_german_idealism.png)
+
+#### Communism (1848 - 1883)
+
+Communism school contains most *labour*, *value*, *production*, *work*,*capital*,*power*,*social*.
+
+
+```{r warning=FALSE}
+wordcloud(words = dat_communism$word, freq = dat_communism$freq, scale = c(4, 0.2),min.freq = 10, max.words=100, random.order=FALSE, rot.per=0.30, colors=brewer.pal(8, "Dark2"))
+```
+
+Key words of Communism:*work*, *labour*, *hand*, *manufacture*, *capital*, *product*, *capitalist*, *employ*.
+![Most words communism talk about.](/Users/patriciasong/Documents/python/5243/R/wordcloud_communism.png)
+
+
+#### Nietzsche (1886 - 1888)
+
+Nietzsche school contains most *thou*, *man*, *Zarathustra*, *world*,*life*.
+
+
+```{r warning=FALSE}
+
+wordcloud(words = dat_nietzsche$word, freq = dat_nietzsche$freq, scale = c(4, 0.2),min.freq = 10, max.words=100, random.order=FALSE, rot.per=0.30, colors=brewer.pal(8, "Dark2"))
+
+```
+
+Key words of Nietzsche:*life*, *like*, *Zarathustra*, *love*, *know*, *world*, *christian*.
+![Most words nietzsche talk about.](/Users/patriciasong/Documents/python/5243/R/wordcloud_nietzsche.png)
+
+#### Analytic (1910 - 1985)
+
+Analytic school contains most *say*, *may*, *sense*, *theory*,*true*,*world*.
+
+```{r warning=FALSE}
+
+wordcloud(words = dat_analytic$word, freq = dat_analytic$freq, scale = c(4, 0.2),min.freq = 10, max.words=100, random.order=FALSE, rot.per=0.30, colors=brewer.pal(8, "Dark2"))
+```
+
+Key words of Analytic:*case*, *know*, *think*, *mean*, *differ*, *certain*, *fact*.
+![Most words analytic talk about.](/Users/patriciasong/Documents/python/5243/R/wordcloud_analytic.png)
+
+#### Phenomenology (1907 - 1950)
+
+Phenomenology school contains most *world*, *dasein*, *time*, *present*,*sense*,*knowledge*.
+
+```{r warning=FALSE}
+
+wordcloud(words = dat_phenomenology$word, freq = dat_phenomenology$freq, scale = c(4, 0.2),min.freq = 10, max.words=100, random.order=FALSE, rot.per=0.30, colors=brewer.pal(8, "Dark2"))
+```
+
+Key words of Phenomenology:*world*, *object*, *think*, *mean*, *possible*, *experience*, *understand*.
+![Most words phenomenology talk about.](/Users/patriciasong/Documents/python/5243/R/wordcloud_phenomenology.png)
+
+
+#### Continental (1961 - 1972)
+
+Continental school contains most *madness*, *language*, *time*, *form*,*order*,*nature*,*thought*.
+
+```{r warning=FALSE}
+
+wordcloud(words = dat_continental$word, freq = dat_continental$freq, scale = c(4, 0.2),min.freq = 10, max.words=100, random.order=FALSE, rot.per=0.30, colors=brewer.pal(8, "Dark2"))
+
+```
+
+Key words of Continental:*form*, *mean*, *mad*, *differ*, *nature*, *order*, *time*, *think*, *language*.
+![Most words continental talk about.](/Users/patriciasong/Documents/python/5243/R/wordcloud_continental.png)
+
+
+### Using python to process data and solve the question
+
+For better understanding and solve the problem to discuss the question we raised in the beginning, what does philosophy mainly concern, we use python to conduct the following process for all the text data.And draw the wordcloud above.
+
+
+- Tokenized: Split the text into words. 
+- Lowercased the words 
+- Removed punctuation
+- Stopwords removed using 
+- Lemmatized: words in third person are changed to first person and verbs in past and future tenses are changed into present.
+- Stemmed to root form
+
+
+[Reference:(https://towardsdatascience.com/topic-modeling-and-latent-dirichlet-allocation-in-python-9bf156893c24)]
+
+#### Word frequency of the whole dataset
+We plotted the Top Words after being processed. This can give us a peek of the main subjects philosohers are talking about throughout the history of philosophy.
+
+![Most words philosophers talk about.](/Users/patriciasong/Documents/python/5243/R/wordfreq_all.png)
+
+### Word cloud of the whole dataset
+![Most words philosophers talk about.](/Users/patriciasong/Documents/python/5243/R/wordcloud_all.png)
+
+
+### Topic Modeling and LDA
+
+Using LDA we can summarize the whole text data into several topics. firstly, we combine the whole document and perform topic modeling by setting topic numbers less than 13. This is because some school have similar keywords as others from the inspection we made earlier. We choose to summarize 7 topics and plot them using pyLDAvis in python.
+
+![Most words philosophers talk about.](/Users/patriciasong/Documents/python/5243/R/topicmodel_all_7.png)
+Each bubble represents a topic. The larger the bubble, the higher percentage of the number of sentences in the corpus is about that topic. Blue bars represent the overall frequency of each word in the corpus. 
+Red bars give the estimated number of times a given term was generated by a given topic. 
+
+![Most words philosophers talk about.](/Users/patriciasong/Documents/python/5243/R/topicmodel_all_1.png)
+
+As we can see from the image, there are about 20,000 of the word ‘nature’, and this term is used about 7,000 times within topic 1. The word with the longest red bar is the word that is used the most by the school belonging to that topic.
+Topic0 attributes to most of the dataset where object and world are most discussed. Topic1 is also apperant including labour and product value etc.. 
+
+$$Topic0: 0.009*object + 0.008*world + 0.007*determin + 0.007*mean + 0.006*think + 0.006*natur + 0.006*exist + 0.006*possibl + 0.006*concept + 0.006*time$$
+$$
+Topic1 : 0.009*labour + 0.007*valu + 0.005*natur + 0.005*product + 0.005*capit + 0.005*time + 0.005*work + 0.005*differ + 0.004*produc + 0.004*form
+$$
+
+$$
+Topic2 : 0.006*women + 0.005*woman + 0.004*time + 0.004*natur + 0.004*like + 0.004*life + 0.003*know + 0.003*good + 0.003*world + 0.003*think
+$$
+$$
+Topic3 : 0.006*natur + 0.006*differ + 0.006*bodi + 0.006*reason + 0.006*say + 0.006*think + 0.006*idea + 0.005*time + 0.005*object + 0.005*know
+$$
+$$
+Topic4 : 0.007*think + 0.006*natur + 0.006*idea + 0.006*object + 0.005*differ + 0.005*mean + 0.005*case + 0.005*time + 0.005*know + 0.004*relat
+$$
+$$
+Topic5 : 0.007*good + 0.006*think + 0.006*say + 0.006*time + 0.006*natur + 0.005*differ + 0.005*case + 0.005*bodi + 0.005*know + 0.005*like
+$$
+$$
+Topic6 : 0.007*natur + 0.007*idea + 0.006*object + 0.005*reason + 0.005*think + 0.005*exist + 0.005*differ + 0.005*time + 0.004*bodi + 0.004*relat
+$$
+
+
+
+
+
+
+## Conclusion and furthur discussion
+
+We visualized and modeled the text data and topics after basic text mining and data analysis.
+We can conclude that:
+
+- Before century, they have started talking about nature, think, knowledge and lots of concepts already existed. Since then these topics became common in most schools throughout the history.
+
+- Stoicism and Nietzsche are big fans of antique English.
+
+- In the late 18 century Capitalism and Communism schools started talking about labour, value, production, work,capital,power,social.
+
+- Capitalism and Feminism have very distinguishable keywords and topics which may be the reason they lasted for quite long time for such short production.
+
+For further exploration, the topic modeling within each school and sentiment analysis are also worth doing.Due to time limit, we will leave the mystery.
